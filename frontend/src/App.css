@@ -58,6 +58,25 @@
   padding: 0 1rem;
 }
 
+.scenario-b-container {
+  display: grid;
+  gap: 20px;
+}
+
+.scenario-b-container .form-container {
+  margin-bottom: 0;
+}
+
+.result-panel {
+  max-height: 360px;
+  overflow: auto;
+  padding: 16px;
+  background: #1f2937;
+  color: #e5e7eb;
+  border-radius: 6px;
+  white-space: pre-wrap;
+}
+
 /* Forms */
 .form-container,
 .event-list-container,

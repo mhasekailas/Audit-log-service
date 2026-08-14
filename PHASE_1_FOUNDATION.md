@@ -71,7 +71,7 @@ audit-log-service/
 - `id`: Primary key (auto-increment)
 - `eventType`, `actorId`, `resourceType`, `resourceId`: Event metadata
 - `payload`: JSONB for flexible structured data
-- `timestamp`: Server-assigned for ordering
+- `timestamp`: Caller-supplied when provided; server-assigned when omitted
 - `content_hash`: SHA-256 of event fields
 - `chain_hash`: SHA-256 of (previousChainHash + contentHash)
 - `sequence_number`: Ensure ordering and chain integrity
@@ -92,7 +92,7 @@ audit-log-service/
 | Hash Input | All event fields + timestamp | Detects any modification |
 | Chain Structure | Sequential linking | Immutable, tamper-evident |
 | Genesis | SHA256("GENESIS") | Deterministic, public knowledge acceptable |
-| Timestamp | Server-assigned | Prevents clock-skew attacks, ensures ordering |
+| Timestamp | Optional caller-supplied, otherwise server-assigned | Preserves event time when provided and gives deterministic server fallback |
 
 **Hash Chain Mechanics:**
 
@@ -218,16 +218,23 @@ Response (if tampered):
 
 ### 7. Design Decisions & Trade-offs
 
-#### Decision 1: Server-Assigned Timestamps
-- **Choice**: Server assigns timestamp on event creation
-- **Why**: Prevents clock-skew attacks, ensures chronological ordering
-- **Alternative Rejected**: Caller-supplied (security risk)
-- **Trade-off**: Callers cannot specify event time; must use server time
+#### Decision 1: Timestamp Handling
+- **Choice**: Accept a caller-supplied timestamp or assign server time when omitted
+- **Why**: Supports historical event ingestion while providing a reliable default
+- **Normalization**: Timestamps are truncated to PostgreSQL microsecond precision before hashing and persistence
+- **Trade-off**: Caller-supplied timestamps require trusted producers; sequence number remains authoritative for chain order
 
 #### Decision 2: Sequential Ordering
 - **Choice**: Use auto-incrementing `sequence_number` for chain ordering
 - **Why**: Simple, deterministic, no concurrent write conflicts
 - **Alternative Considered**: UUID-based ordering (loses determinism)
+
+### Scenario B Extension Contract
+
+- Retention policies archive matching records by `timestamp` and `retentionDays`; archived rows remain in the database and are excluded from normal queries.
+- Verification walks all rows, including archived rows, so a legitimate archive does not appear as a chain break.
+- Redaction accepts JSON object paths such as `accountNumber` or `customer.accountNumber`. The value is replaced with `[REDACTED]`, its one-way hash is written to `redaction_log`, and hashes are rebuilt from the redacted row forward.
+- Bulk exports are filtered by exactly one `actorId` or `resourceId`. Each exported record includes its predecessor chain hash, allowing an independent verifier to recompute content and chain hashes.
 - **Trade-off**: Slightly slower with very high throughput; acceptable for compliance use case
 
 #### Decision 3: In-Memory Chain Verification

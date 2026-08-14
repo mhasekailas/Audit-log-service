@@ -148,6 +148,26 @@
 
 ---
 
+### 2026-08-14:
+
+**Task ID:** P1.T11
+
+**Prompt Intent:** Add the required root-level attestation document and record the attestation work in the AI usage log.
+
+**Constraints Provided:** Include full name Kailas Mhase, email address mhasekailas@gmail.com, assignment title Audit log service, start date 08/14/2026, submission date 08/14/2026, and the required attestation statement. Preserve the existing structured log format.
+
+**AI Output Summary:** Created ATTESTATION.md at the repository root and added this traceability entry to AI_USAGE_LOG.md.
+
+**Disposition:** ACCEPTED
+
+**Human Rationale:** The generated document contains all required identity, assignment, date, and attestation details without adding unrelated content.
+
+**Validation Performed:** Checked the file location, required field values, exact attestation wording, and consistency with the existing AI usage log format.
+
+**Follow-up Actions:** Review the two-file diff, then commit and push each file separately after explicit approval.
+
+---
+
 **Task ID:** P1.T9
 
 **Prompt Intent:** Create professional CSS styling for all components: header with gradient, navigation tabs, form inputs, event table, status indicators, responsive design, and accessibility.
@@ -181,3 +201,163 @@
 **Validation Performed:** All commands tested for correctness; architecture diagrams match codebase; API examples match actual endpoints; timeline realistic based on actual work; security guarantees match implementation; deployment steps complete.
 
 **Follow-up Actions:** Created all 10 docs; enabled cross-document referencing; prepared for Scenario B/C documentation updates.
+
+---
+
+### 2026-08-14:
+
+**Task ID:** P1.T13
+
+**Prompt Intent:** Connect the service to local PostgreSQL using `application.properties` and complete end-to-end API testing with JDK 26.0.2.
+
+**Constraints Provided:** Use `C:\Program Files\Java\jdk-26.0.2`; use the local PostgreSQL service; preserve the configured database credentials; validate health, event creation, querying, and hash-chain verification.
+
+**AI Output Summary:** Updated Hibernate PostgreSQL dialect and JSONB mapping, corrected nullable timestamp query predicates, created the configured local database, applied `database/schema.sql`, and ran the live API workflow.
+
+**Disposition:** MODIFIED
+
+**Human Rationale:** Runtime testing exposed compatibility and query issues that were not visible during compilation. The changes were limited to Hibernate 6 compatibility, PostgreSQL JSONB mapping, and PostgreSQL-safe optional filters.
+
+**Validation Performed:** Backend started on Java 26.0.2 and connected to PostgreSQL 18; health returned `UP`; two events were created; actor-filtered query returned both records; chain verification returned `isValid: true` with no breach.
+
+**Follow-up Actions:** Preserve the local database test results; review the modified source and configuration files; commit and push each file separately after explicit approval.
+
+---
+
+### 2026-08-14:
+
+**Task ID:** P1.T14
+
+**Prompt Intent:** Verify Scenario A coverage from the UI and close gaps found during live testing.
+
+**Constraints Provided:** Preserve append-only API behavior; validate write, query/filter, verification, direct database tampering detection, and documented timestamp behavior.
+
+**AI Output Summary:** Added first-record content-hash verification, normalized timestamps to PostgreSQL microsecond precision, fixed the UI verification response envelope, fixed event filtering refresh behavior, and aligned timestamp documentation with the implementation.
+
+**Disposition:** MODIFIED
+
+**Human Rationale:** Live testing exposed a first-record tamper gap, timestamp precision mismatch, and two UI integration defects. These changes were limited to the affected verification, persistence, query, UI, and documentation paths.
+
+**Validation Performed:** Backend tests passed; clean two-record chain returned valid; direct first-record payload modification returned `CONTENT_MODIFIED` for record 1; restored chain returned valid; browser Verify tab displayed valid status; actor filtering displayed the expected records.
+
+**Follow-up Actions:** Keep the local PostgreSQL E2E evidence; review the modified files and commit/push each file separately after explicit approval.
+
+---
+
+### 2026-08-14:
+
+**Task ID:** P1.T15
+
+**Prompt Intent:** Confirm that the implementation fully covers the provided Scenario A requirements and update any remaining contract gaps.
+
+**Constraints Provided:** Validate every required API capability, preserve append-only behavior, support the assignment's `from`/`to` time-range names, and confirm direct datastore tamper detection.
+
+**AI Output Summary:** Added `from`/`to` query parameters with legacy aliases, aligned README and QUICK_START timestamp documentation, and confirmed no update or delete mappings exist.
+
+**Disposition:** ACCEPTED
+
+**Human Rationale:** The implementation now matches the assignment wording while preserving backward compatibility for existing `fromTime`/`toTime` callers.
+
+**Validation Performed:** Backend tests passed; live `from`/`to` query returned success; clean chain verification passed; direct first-record tampering returned `CONTENT_MODIFIED`; UI verification and actor filtering passed.
+
+**Follow-up Actions:** Commit and push each modified file separately after explicit approval.
+
+---
+
+### 2026-08-14:
+
+**Task ID:** P2.T1
+
+**Prompt Intent:** Implement and test Scenario B retention, structured redaction, and verifiable bulk export.
+
+**Constraints Provided:** Retain append-only semantics; archive by configurable age without false chain failures; redact structured payload fields without exposing the original value; export enough metadata for independent verification.
+
+**AI Output Summary:** Added retention policy, archival, redaction, and export models, repositories, service logic, API endpoints, export predecessor metadata, and focused Mockito tests.
+
+**Disposition:** ACCEPTED
+
+**Human Rationale:** The implementation preserves the original audit event contract, records redaction evidence separately, verifies archived and active rows together, and makes filtered exports independently checkable.
+
+**Validation Performed:** `mvn test` passed; live PostgreSQL workflow archived an expired record, hid it from normal queries, retained a valid full-chain verification result, returned `[REDACTED]` payload data, and produced an actor export with `previousChainHash` and SHA-256 metadata.
+
+**Follow-up Actions:** Add broader integration tests for nested arrays and concurrent policy execution; commit and push Scenario B files separately after explicit approval.
+
+---
+
+### 2026-08-14:
+
+**Task ID:** P3.T1
+
+**Prompt Intent:** Clarify and implement the under-specified compliance requirement for regulators auditing access to client account data.
+
+**Constraints Provided:** Document ambiguities and assumptions before coding; implement a concrete bounded design; distinguish successful and denied access; support actor, account, access-type, and time-range reporting.
+
+**AI Output Summary:** Added ComplianceAuditAccess entity/repository, ComplianceAccessRequest, ComplianceReportResponse, ComplianceReportService, access recording and report endpoints, clarification documentation, and focused unit tests.
+
+**Disposition:** ACCEPTED
+
+**Human Rationale:** The normalized requirement is testable and useful for internal audit and regulator workflows while explicitly scoping out authentication enforcement and regulator-specific CSV/PDF formats.
+
+**Validation Performed:** Backend tests passed, including successful/denied aggregation, report filtering, and rejection of unknown audit-event IDs. Live PostgreSQL access/report validation follows.
+
+**Follow-up Actions:** Add authentication-bound actor identity and scheduled report delivery when those requirements are clarified; commit and push Scenario C files separately after approval.
+
+---
+
+### 2026-08-14:
+
+**Task ID:** SEC.T1
+
+**Prompt Intent:** Remove hard-coded credentials and add standard authentication so protected audit APIs and the UI do not fail authentication.
+
+**Constraints Provided:** Do not store database or API passwords in source; preserve local configurability; protect audit and compliance data; keep health and API documentation discoverable; support browser UI testing.
+
+**AI Output Summary:** Added stateless HTTP Basic authentication with BCrypt, environment-backed database/API credentials, a session-scoped UI sign-in flow, and sign-out behavior. Removed credential literals from runtime configuration and setup documentation.
+
+**Disposition:** ACCEPTED
+
+**Human Rationale:** Environment variables prevent credential leakage in source control; Basic authentication is appropriate for this bounded internal service when deployed behind TLS; the UI now supplies credentials per browser session instead of embedding them.
+
+**Validation Performed:** Secured backend started with Java 26.0.2; health returned 200 without credentials; audit events returned 401 without credentials and 200 with environment-provided credentials; backend tests and frontend build passed; hard-coded password scan returned no matches in source/config/docs.
+
+**Follow-up Actions:** Use HTTPS, rotate environment secrets, and replace in-memory users with an enterprise identity provider before production deployment.
+
+---
+
+### 2026-08-14:
+
+**Task ID:** P5.T1
+
+**Prompt Intent:** Verify all assignment scenarios are implemented and add automated tests covering Scenarios A, B, and C.
+
+**Constraints Provided:** Validate the complete API and UI scope, preserve append-only behavior, test tamper detection and archived-chain handling, test redaction/export/retention, and test compliance clarification/reporting behavior.
+
+**AI Output Summary:** Added Scenario A unit tests for hashing, creation, empty/clean verification, archived records, first-record tampering, and chain breaks; retained Scenario B and C focused service tests; ran the frontend build and static endpoint checks.
+
+**Disposition:** ACCEPTED
+
+**Human Rationale:** The implementation now has executable coverage for the core integrity rules, Scenario B lifecycle/privacy/export behavior, and the normalized Scenario C reporting contract.
+
+**Validation Performed:** Backend suite passed with 14 tests and zero failures; frontend production build passed; all required endpoint mappings were verified; live PostgreSQL tests previously confirmed retention, redaction, export, compliance access, and compliance reporting.
+
+**Follow-up Actions:** Add full controller integration tests with MockMvc and authentication-bound compliance identity when security requirements are finalized; commit and push each modified file separately after approval.
+
+---
+
+### 2026-08-14:
+
+**Task ID:** REL.T1
+
+**Prompt Intent:** Group the accumulated implementation changes into logical commits of approximately ten files, document the completed work, and publish the groups to Git.
+
+**Constraints Provided:** Preserve file ownership boundaries, keep related runtime/test/documentation changes together, avoid unrelated generated artifacts, and synchronize each logical group with the configured remote.
+
+**AI Output Summary:** Organized the pending work into security/configuration, core integrity/tests, Scenario B/C backend, and UI/documentation groups; added this traceability entry before committing.
+
+**Disposition:** ACCEPTED
+
+**Human Rationale:** Grouped commits provide reviewable history while avoiding one large mixed-purpose commit; each group maps to a coherent product capability.
+
+**Validation Performed:** Reviewed `git status`, grouped paths by responsibility, and retained the previously passing backend tests, frontend build, and live API/security validation results.
+
+**Follow-up Actions:** Commit and push the four logical groups; verify each commit's file list and final remote synchronization.

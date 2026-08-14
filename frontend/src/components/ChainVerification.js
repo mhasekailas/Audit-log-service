@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { authorizedFetch } from '../api';
 
 function ChainVerification({ onVerify }) {
   const [verificationResult, setVerificationResult] = useState(null);
@@ -11,12 +12,12 @@ function ChainVerification({ onVerify }) {
     setVerificationResult(null);
 
     try {
-      const response = await fetch('/audit/verify');
+      const response = await authorizedFetch('/audit/verify');
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
       const data = await response.json();
-      setVerificationResult(data);
+      setVerificationResult(data.data || data);
     } catch (err) {
       setError(err.message);
     } finally {

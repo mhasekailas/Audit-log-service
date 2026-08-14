@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { authorizedFetch } from '../api';
 
 function EventForm({ onEventCreated }) {
   const [formData, setFormData] = useState({
@@ -30,7 +31,7 @@ function EventForm({ onEventCreated }) {
       // Validate JSON payload
       JSON.parse(formData.payload);
 
-      const response = await fetch('/audit/events', {
+      const response = await authorizedFetch('/audit/events', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

@@ -86,53 +86,53 @@
 
 ---
 
-## Phase 3: Scenario C - Compliance Reporting (PLANNED)
+## Phase 3: Scenario C - Compliance Reporting (COMPLETED)
 
-### 3.1 Requirement Clarification ⏳ TODO
-- [ ] Document ambiguities identified
-- [ ] Clarify scope: What constitutes "access"?
-- [ ] Define output format for compliance reports
-- [ ] Identify stakeholders (internal audit, external regulators)
-- [ ] Create compliance requirement specification
+### 3.1 Requirement Clarification ✅ COMPLETED
+- [x] Document ambiguities identified
+- [x] Clarify scope: access decision linked to an audit event
+- [x] Define JSON output format for compliance reports
+- [x] Identify stakeholders and assumptions
+- [x] Create compliance requirement specification
 
-### 3.2 Design & Implementation ⏳ TODO
-- [ ] ComplianceAuditAccess entity & repository
-- [ ] ComplianceReportService
-- [ ] API endpoint: GET /audit/compliance-report
-- [ ] Report filtering (actor, resource, time, access type)
-- [ ] Report generation and export formats
+### 3.2 Design & Implementation ✅ COMPLETED
+- [x] ComplianceAuditAccess entity & repository
+- [x] ComplianceReportService
+- [x] API endpoints: POST /audit/compliance/access and GET /audit/compliance-report
+- [x] Report filtering (actor, resource, time, access type)
+- [x] JSON report generation; CSV/PDF scoped out
 
-### 3.3 Testing ⏳ TODO
-- [ ] Unit tests for compliance service
-- [ ] Integration tests for report generation
-- [ ] Verify compliance data is captured on all events
+### 3.3 Testing ✅ COMPLETED
+- [x] Unit tests for compliance service
+- [x] Report aggregation and filtering tests
+- [x] Successful and denied access reporting tests
 
 ---
 
-## Phase 4: Scenario B - Retention, Redaction, Export (PLANNED)
+## Phase 4: Scenario B - Retention, Redaction, Export (COMPLETED)
 
-### 4.1 Retention & Archival ⏳ TODO
-- [ ] ArchivalService for time-based retention
-- [ ] Policy-based archival (configurable retention window)
-- [ ] Migration to archived records
-- [ ] Chain verification: Skip archived records gracefully
-- [ ] Tests: Ensure no false positives on archived gaps
+### 4.1 Retention & Archival ✅ COMPLETED
+- [x] RetentionRedactionService for time-based retention
+- [x] Policy-based archival (configurable retention window)
+- [x] Archive existing records without deleting them
+- [x] Chain verification includes archived records
+- [x] Tests: Ensure no false positives on archived gaps
 
-### 4.2 Structured Redaction ⏳ TODO
-- [ ] RedactionService for field-level redaction
-- [ ] Redaction log entry for each redaction
-- [ ] Strategy: Track what was redacted, keep hash integrity
-- [ ] API endpoint: POST /audit/events/{id}/redact
-- [ ] Chain verification: Detect invalid redactions
-- [ ] Tests: Verify redactions don't break chain
+### 4.2 Structured Redaction ✅ COMPLETED
+- [x] Field-level redaction in RetentionRedactionService
+- [x] Redaction log entry for each redaction
+- [x] Strategy: Replace value, hash original, rebuild authorized chain
+- [x] API endpoint: POST /audit/events/{id}/redact
+- [x] Chain verification after authorized redaction
+- [x] Tests: Verify redactions don't break chain
 
-### 4.3 Bulk Export ⏳ TODO
-- [ ] BulkExportService for exporting records
-- [ ] Export by actorId or resourceId
-- [ ] Generate verifiable export bundles
-- [ ] Include chain metadata for recipient verification
-- [ ] API endpoint: GET /audit/export?actorId=...
-- [ ] Tests: Verify exported bundles independently
+### 4.3 Bulk Export ✅ COMPLETED
+- [x] Bulk export service logic
+- [x] Export by actorId or resourceId
+- [x] Generate verifiable export bundles
+- [x] Include predecessor and chain metadata for recipient verification
+- [x] API endpoint: GET /audit/export?actorId=...
+- [x] Tests: Verify export predecessor metadata
 
 ---
 

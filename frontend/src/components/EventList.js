@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { authorizedFetch } from '../api';
 
 function EventList({ events, loading, onRefresh }) {
   const [filters, setFilters] = useState({
@@ -23,10 +24,12 @@ function EventList({ events, loading, onRefresh }) {
     });
     
     try {
-      const response = await fetch(`/audit/events?${params.toString()}`);
-      const data = await response.json();
-      // Update events through parent if needed
-      onRefresh();
+      const response = await authorizedFetch(`/audit/events?${params.toString()}`);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      await response.json();
+      onRefresh(params.toString() || 'limit=50');
     } catch (error) {
       console.error('Error filtering events:', error);
     }

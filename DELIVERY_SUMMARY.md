@@ -236,21 +236,21 @@ curl http://localhost:8080/api/v1/audit/verify
 - [x] Database schema
 - [x] Frontend UI (all 3 components)
 
-### ⏳ Scenario B: Retention & Redaction
-**Status**: Schema ready, implementation TODO (Phase 4)
+### ✅ Scenario B: Retention & Redaction
+**Status**: Implemented and validated against local PostgreSQL
 - [x] Database tables designed
-- [ ] ArchivalService implementation
-- [ ] RedactionService implementation
-- [ ] Bulk export endpoint
-- [ ] Tests
+- [x] Retention policy and archival endpoints
+- [x] Structured redaction and redaction audit log
+- [x] Verifiable bulk export endpoint
+- [x] Unit tests and live PostgreSQL workflow
 
-### ⏳ Scenario C: Compliance Reporting
-**Status**: Schema ready, implementation TODO (Phase 3)
+### ✅ Scenario C: Compliance Reporting
+**Status**: Clarified, implemented, and tested
 - [x] Compliance audit tables designed
-- [ ] Requirement clarification document
-- [ ] ComplianceReportService
-- [ ] Report endpoints
-- [ ] Tests
+- [x] Requirement clarification and assumptions documented
+- [x] ComplianceReportService
+- [x] Access recording and report endpoints
+- [x] Successful, denied, filtered, and invalid-access tests
 
 ---
 
