@@ -14,6 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Optional;
 
@@ -43,6 +44,7 @@ public class AuditEventService {
         // Use server-assigned timestamp if not provided
         LocalDateTime timestamp = request.getTimestamp() != null ? 
             request.getTimestamp() : LocalDateTime.now();
+        timestamp = timestamp.truncatedTo(ChronoUnit.MICROS);
         
         // Get next sequence number
         Long sequenceNumber = eventRepository.getNextSequenceNumber();
@@ -118,7 +120,7 @@ public class AuditEventService {
     public ChainVerificationResponse verifyChain() {
         log.info("Starting chain verification");
         
-        List<AuditEvent> allEvents = eventRepository.findByIsArchivedFalseOrderBySequenceNumberAsc();
+        List<AuditEvent> allEvents = eventRepository.findAllByOrderBySequenceNumberAsc();
         Integer totalRecords = allEvents.size();
         
         if (totalRecords == 0) {
@@ -132,6 +134,26 @@ public class AuditEventService {
         
         // Verify first record
         AuditEvent firstEvent = allEvents.get(0);
+        String expectedFirstContentHash = hashUtil.computeContentHash(
+            firstEvent.getEventType(),
+            firstEvent.getActorId(),
+            firstEvent.getResourceType(),
+            firstEvent.getResourceId(),
+            firstEvent.getPayload(),
+            firstEvent.getTimestamp().toString()
+        );
+
+        if (!expectedFirstContentHash.equals(firstEvent.getContentHash())) {
+            log.warn("Content hash mismatch detected at first record ID: {}", firstEvent.getId());
+            return buildBreachResponse(
+                totalRecords,
+                firstEvent.getId(),
+                expectedFirstContentHash,
+                firstEvent.getContentHash(),
+                "CONTENT_MODIFIED"
+            );
+        }
+
         String expectedFirstChainHash = hashUtil.computeChainHash(
             hashUtil.getGenesisHash(),
             firstEvent.getContentHash()

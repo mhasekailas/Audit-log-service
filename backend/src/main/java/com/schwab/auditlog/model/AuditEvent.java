@@ -1,6 +1,8 @@
 package com.schwab.auditlog.model;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -48,6 +50,7 @@ public class AuditEvent {
     private String resourceId;
     
     @Column(name = "payload", nullable = false, columnDefinition = "jsonb")
+    @JdbcTypeCode(SqlTypes.JSON)
     private JsonNode payload;
     
     @Column(name = "timestamp", nullable = false)

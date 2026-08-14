@@ -44,6 +44,18 @@ public interface AuditEventRepository extends JpaRepository<AuditEvent, Long> {
      * Find all non-archived events ordered by sequence
      */
     List<AuditEvent> findByIsArchivedFalseOrderBySequenceNumberAsc();
+
+    List<AuditEvent> findAllByOrderBySequenceNumberAsc();
+
+    List<AuditEvent> findByActorIdAndIsArchivedFalseOrderBySequenceNumberAsc(String actorId);
+
+    List<AuditEvent> findByResourceIdAndIsArchivedFalseOrderBySequenceNumberAsc(String resourceId);
+
+    List<AuditEvent> findByActorIdOrderBySequenceNumberAsc(String actorId);
+
+    List<AuditEvent> findByResourceIdOrderBySequenceNumberAsc(String resourceId);
+
+    List<AuditEvent> findByTimestampBeforeAndIsArchivedFalse(LocalDateTime cutoff);
     
     /**
      * Find the last record to get the latest chain hash
@@ -59,8 +71,8 @@ public interface AuditEventRepository extends JpaRepository<AuditEvent, Long> {
            "(:eventType IS NULL OR e.eventType = :eventType) AND " +
            "(:resourceType IS NULL OR e.resourceType = :resourceType) AND " +
            "(:resourceId IS NULL OR e.resourceId = :resourceId) AND " +
-           "(:fromTime IS NULL OR e.timestamp >= :fromTime) AND " +
-           "(:toTime IS NULL OR e.timestamp <= :toTime) AND " +
+           "e.timestamp >= COALESCE(:fromTime, e.timestamp) AND " +
+           "e.timestamp <= COALESCE(:toTime, e.timestamp) AND " +
            "e.isArchived = false " +
            "ORDER BY e.sequenceNumber DESC")
     Page<AuditEvent> findByMultipleCriteria(
