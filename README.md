@@ -4,6 +4,22 @@ A tamper-evident audit log service built with Java Spring Boot, React, and Postg
 
 ## Features
 
+## Security Configuration
+
+Audit and compliance endpoints require HTTP Basic authentication. Credentials are
+read from environment variables and are never stored in source files:
+
+```powershell
+$env:AUDIT_DB_USERNAME = "your-db-user"
+$env:AUDIT_DB_PASSWORD = "your-db-password"
+$env:AUDIT_API_USERNAME = "your-api-user"
+$env:AUDIT_API_PASSWORD = "your-api-password"
+```
+
+The React UI asks for API credentials at sign-in and keeps them only in the
+browser session. Health and Swagger metadata remain public; audit data endpoints
+require authentication.
+
 ### Scenario A: Core Audit Log Service
 - **Write API**: Append-only event storage with automatic hash chain generation
 - **Query API**: Retrieve events with filtering by actorId, eventType, resourceType, resourceId, and time range
@@ -14,6 +30,52 @@ A tamper-evident audit log service built with Java Spring Boot, React, and Postg
 - **Retention Policies**: Archive records older than configurable retention window
 - **Structured Redaction**: Redact sensitive fields without breaking the hash chain
 - **Bulk Export**: Export verifiable bundles of records for compliance and archival
+
+Scenario B endpoints:
+
+```text
+POST /api/v1/audit/retention-policies
+POST /api/v1/audit/retention/archive?asOf=2026-08-14T12:00:00
+POST /api/v1/audit/events/{id}/redact
+GET  /api/v1/audit/export?actorId=user123
+GET  /api/v1/audit/export?resourceId=acct-123
+```
+
+Redaction replaces selected object payload fields with `[REDACTED]`, records the
+field path, reason, and one-way hash of the original value in `redaction_log`,
+then recomputes content and chain hashes from the redacted record forward. This
+preserves tamper evidence while ensuring the sensitive value is no longer stored.
+Verification includes archived records, so retention does not create a false
+chain break. Exports include each record's `previousChainHash`, the predecessor
+chain hash outside the filtered set, the hash algorithm, and the genesis hash.
+
+### Scenario C: Compliance Reporting
+
+#### Requirement Clarification
+The phrase "audit access to client account data" is normalized here as:
+
+> Record every access decision for an audit event representing client account data,
+> including access type, result, role, IP address, user agent, actor, resource, and
+> access time; provide regulator-readable reports filtered by actor, account, access
+> type, and time range.
+
+#### Ambiguities and Assumptions
+- **Who is the accessor?** This phase accepts a supplied role and actor-linked audit event; authentication/identity binding is out of scope.
+- **What counts as access?** `READ`, `EXPORT`, and other caller-defined access types are accepted.
+- **What is the report format?** JSON is implemented; CSV/PDF regulator templates are scoped out.
+- **What time governs reporting?** The access decision's `created_at` timestamp is used.
+- **How are denied attempts handled?** They are retained and counted separately from successful access.
+
+#### Implemented Design
+```text
+POST /api/v1/audit/compliance/access
+GET  /api/v1/audit/compliance-report?from=...&to=...&actorId=...&resourceId=...&accessType=...
+```
+
+The access table references an existing audit event. Reports join access records
+to immutable event metadata and return totals, success/denied counts, counts by
+access type, and detailed records. Authentication, authorization enforcement,
+scheduled delivery, and regulator-specific formatting remain outside this phase.
 
 ### Scenario C: Compliance Reporting
 - **Access Audit Trail**: Track who accessed what resources and when
@@ -123,7 +185,7 @@ Content-Type: application/json
 
 ### Query Events
 ```
-GET /audit/events?actorId=user123&eventType=USER_LOGIN&limit=50&offset=0
+GET /audit/events?actorId=user123&eventType=USER_LOGIN&from=2026-08-14T00:00:00&to=2026-08-14T23:59:59&limit=50&page=0
 
 Response:
 {
@@ -215,16 +277,16 @@ curl http://localhost:8080/api/v1/audit/verify
 - **Alternative Considered**: SHA-512 (longer, slower), Argon2 (memory-hard, overkill for hashing)
 - **Trade-off**: 256-bit hash is sufficient for cryptographic integrity
 
-### Timestamp Handling: Server-Assigned
-- **Choice**: Server generates timestamp on record creation
-- **Rationale**: Prevents clock-skew attacks; ensures chronological ordering
-- **Alternative**: Caller-supplied (rejected due to security/ordering risks)
+### Timestamp Handling: Caller-Supplied or Server-Assigned
+- **Choice**: Accept a caller-supplied timestamp; assign server time when omitted
+- **Rationale**: Supports historical event ingestion while providing a reliable default
+- **Normalization**: Timestamps are normalized to PostgreSQL microsecond precision before hashing
 
 ### Redaction Strategy: Separate Audit Log
-- **Choice**: Store original hash; track redactions in separate table
-- **Rationale**: Preserves chain integrity while satisfying privacy requirements
-- **Alternative Considered**: Redaction envelope (adds complexity)
-- **Trade-off**: Requires two-table lookup for redacted fields
+- **Choice**: Replace the selected value, log its one-way hash, and rebuild the chain from that record forward
+- **Rationale**: Removes sensitive data while keeping authorized redaction verifiable
+- **Alternative Considered**: Preserve the original value encrypted (adds key-management and deletion obligations)
+- **Trade-off**: Historical pre-redaction values cannot be recovered; redaction is an authorized chain rewrite recorded in `redaction_log`
 
 ### Chain Genesis
 - **Choice**: First record uses fixed genesis hash `SHA256("GENESIS")`

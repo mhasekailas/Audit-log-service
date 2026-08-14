@@ -6,15 +6,21 @@
 # 1. Navigate to project
 cd "f:\Kailas SChwab assignment\Audit-log-service"
 
-# 2. Start PostgreSQL (Docker)
+# 2. Set credentials in the current shell
+$env:AUDIT_DB_USERNAME = "your-db-user"
+$env:AUDIT_DB_PASSWORD = "your-db-password"
+$env:AUDIT_API_USERNAME = "your-api-user"
+$env:AUDIT_API_PASSWORD = "your-api-password"
+
+# 3. Start PostgreSQL (Docker)
 docker-compose up -d postgres
 
-# 3. Build Backend (in new terminal)
+# 4. Build Backend (in new terminal)
 cd backend
 mvn clean install
 mvn spring-boot:run
 
-# 4. Start Frontend (in another new terminal)
+# 5. Start Frontend (in another new terminal)
 cd frontend
 npm install
 npm start
@@ -254,7 +260,7 @@ See `GIT_SETUP_GUIDE.md` for detailed commit examples.
 | Decision | What | Why |
 |----------|------|-----|
 | Hash Algorithm | SHA-256 | FIPS-compliant, industry standard |
-| Timestamps | Server-assigned | Prevents clock-skew attacks |
+| Timestamps | Caller-supplied or server-assigned | Supports historical events with a reliable fallback; normalized before hashing |
 | Verification | Walk entire chain | 100% integrity guarantee |
 | Database | PostgreSQL | ACID compliance, JSON support |
 | Backend | Spring Boot | Robust, production-proven |

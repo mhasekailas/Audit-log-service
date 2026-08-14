@@ -260,8 +260,8 @@ curl http://localhost:8080/api/v1/audit/verify
 ### Backend (application.properties)
 ```properties
 spring.datasource.url=jdbc:postgresql://localhost:5432/audit_log_db
-spring.datasource.username=postgres
-spring.datasource.password=postgres
+spring.datasource.username=${AUDIT_DB_USERNAME}
+spring.datasource.password=${AUDIT_DB_PASSWORD}
 server.port=8080
 server.servlet.context-path=/api/v1
 ```
@@ -278,7 +278,7 @@ postgres:
   environment:
     POSTGRES_DB: audit_log_db
     POSTGRES_USER: postgres
-    POSTGRES_PASSWORD: postgres
+    POSTGRES_PASSWORD: ${AUDIT_DB_PASSWORD}
   ports:
     - "5432:5432"
 ```

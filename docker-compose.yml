@@ -6,8 +6,8 @@ services:
     container_name: audit_log_postgres
     environment:
       POSTGRES_DB: audit_log_db
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: ${AUDIT_DB_USERNAME:?Set AUDIT_DB_USERNAME before starting Docker Compose}
+      POSTGRES_PASSWORD: ${AUDIT_DB_PASSWORD:?Set AUDIT_DB_PASSWORD before starting Docker Compose}
     ports:
       - "5432:5432"
     volumes:
