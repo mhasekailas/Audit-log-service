@@ -1,9 +1,16 @@
 package com.schwab.auditlog.controller;
 
 import com.schwab.auditlog.dto.AuditEventResponse;
+import com.schwab.auditlog.dto.BulkExportResponse;
 import com.schwab.auditlog.dto.ChainVerificationResponse;
+import com.schwab.auditlog.dto.ComplianceAccessRequest;
+import com.schwab.auditlog.dto.ComplianceReportResponse;
 import com.schwab.auditlog.dto.CreateEventRequest;
+import com.schwab.auditlog.dto.RedactionRequest;
+import com.schwab.auditlog.dto.RetentionPolicyRequest;
 import com.schwab.auditlog.service.AuditEventService;
+import com.schwab.auditlog.service.RetentionRedactionService;
+import com.schwab.auditlog.service.ComplianceReportService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -38,9 +45,14 @@ import java.util.Map;
 public class AuditLogController {
     
     private final AuditEventService eventService;
+    private final RetentionRedactionService retentionRedactionService;
+    private final ComplianceReportService complianceReportService;
     
-    public AuditLogController(AuditEventService eventService) {
+    public AuditLogController(AuditEventService eventService, RetentionRedactionService retentionRedactionService,
+                              ComplianceReportService complianceReportService) {
         this.eventService = eventService;
+        this.retentionRedactionService = retentionRedactionService;
+        this.complianceReportService = complianceReportService;
     }
     
     /**
@@ -98,14 +110,24 @@ public class AuditLogController {
         @RequestParam(required = false) String resourceId,
         
         @Parameter(description = "Filter from timestamp (ISO format)")
-        @RequestParam(required = false)
+        @RequestParam(name = "from", required = false)
         @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
         LocalDateTime fromTime,
+
+        @Parameter(description = "Legacy alias for from")
+        @RequestParam(name = "fromTime", required = false)
+        @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
+        LocalDateTime legacyFromTime,
         
         @Parameter(description = "Filter to timestamp (ISO format)")
-        @RequestParam(required = false)
+        @RequestParam(name = "to", required = false)
         @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
         LocalDateTime toTime,
+
+        @Parameter(description = "Legacy alias for to")
+        @RequestParam(name = "toTime", required = false)
+        @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
+        LocalDateTime legacyToTime,
         
         @Parameter(description = "Page number (0-indexed, default: 0)")
         @RequestParam(defaultValue = "0") int page,
@@ -118,7 +140,10 @@ public class AuditLogController {
         try {
             Pageable pageable = PageRequest.of(page, limit);
             Page<AuditEventResponse> events = eventService.queryEvents(
-                actorId, eventType, resourceType, resourceId, fromTime, toTime, pageable
+                actorId, eventType, resourceType, resourceId,
+                fromTime != null ? fromTime : legacyFromTime,
+                toTime != null ? toTime : legacyToTime,
+                pageable
             );
             
             Map<String, Object> body = new HashMap<>();
@@ -216,5 +241,67 @@ public class AuditLogController {
         response.put("status", "UP");
         response.put("service", "Audit Log Service");
         return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/retention-policies")
+    @Operation(summary = "Create or update a retention policy")
+    public ResponseEntity<Map<String, Object>> upsertRetentionPolicy(
+        @Valid @RequestBody RetentionPolicyRequest request) {
+        Map<String, Object> body = new HashMap<>();
+        body.put("success", true);
+        body.put("data", retentionRedactionService.upsertPolicy(request));
+        return ResponseEntity.ok(body);
+    }
+
+    @PostMapping("/retention/archive")
+    @Operation(summary = "Archive events expired under retention policies")
+    public ResponseEntity<Map<String, Object>> archiveExpired(
+        @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime asOf) {
+        int archived = retentionRedactionService.archiveExpired(asOf == null ? LocalDateTime.now() : asOf);
+        Map<String, Object> body = new HashMap<>();
+        body.put("success", true);
+        body.put("archivedCount", archived);
+        return ResponseEntity.ok(body);
+    }
+
+    @PostMapping("/events/{id}/redact")
+    @Operation(summary = "Redact selected payload fields and preserve chain integrity")
+    public ResponseEntity<Map<String, Object>> redactEvent(
+        @PathVariable Long id, @Valid @RequestBody RedactionRequest request) {
+        Map<String, Object> body = new HashMap<>();
+        body.put("success", true);
+        body.put("data", retentionRedactionService.redact(id, request));
+        return ResponseEntity.ok(body);
+    }
+
+    @GetMapping("/export")
+    @Operation(summary = "Export a self-contained verifiable actor or resource bundle")
+    public ResponseEntity<BulkExportResponse> export(
+        @RequestParam(required = false) String actorId,
+        @RequestParam(required = false) String resourceId) {
+        return ResponseEntity.ok(retentionRedactionService.export(actorId, resourceId));
+    }
+
+    @PostMapping("/compliance/access")
+    @Operation(summary = "Record an account-data access decision")
+    public ResponseEntity<Map<String, Object>> recordComplianceAccess(
+        @Valid @RequestBody ComplianceAccessRequest request) {
+        Map<String, Object> body = new HashMap<>();
+        body.put("success", true);
+        body.put("data", complianceReportService.recordAccess(request));
+        return ResponseEntity.status(HttpStatus.CREATED).body(body);
+    }
+
+    @GetMapping("/compliance-report")
+    @Operation(summary = "Generate a regulator-ready account access report")
+    public ResponseEntity<ComplianceReportResponse> complianceReport(
+        @RequestParam(name = "from", required = false)
+        @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime from,
+        @RequestParam(name = "to", required = false)
+        @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime to,
+        @RequestParam(required = false) String actorId,
+        @RequestParam(required = false) String resourceId,
+        @RequestParam(required = false) String accessType) {
+        return ResponseEntity.ok(complianceReportService.report(from, to, actorId, resourceId, accessType));
     }
 }
