@@ -1,0 +1,38 @@
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Build
+target/
+build/
+dist/
+node_modules/
+.gradle/
+
+# Environment
+.env
+.env.local
+*.properties.local
+
+# Logs
+logs/
+*.log
+
+# Database
+*.db
+*.sqlite
+pgdata/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Frontend
+.next/
+out/
+dist/
+build/
