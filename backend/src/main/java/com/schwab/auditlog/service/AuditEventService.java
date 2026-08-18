@@ -6,8 +6,10 @@ import com.schwab.auditlog.dto.ChainVerificationResponse;
 import com.schwab.auditlog.dto.CreateEventRequest;
 import com.schwab.auditlog.model.AuditEvent;
 import com.schwab.auditlog.repository.AuditEventRepository;
+import com.schwab.auditlog.repository.ChainLockRepository;
 import com.schwab.auditlog.util.HashUtil;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -27,68 +29,125 @@ import java.util.Optional;
 public class AuditEventService {
     
     private final AuditEventRepository eventRepository;
+    private final ChainLockRepository chainLockRepository;
     private final HashUtil hashUtil;
+
+    // Serializes sequence-number/chain-hash generation within this JVM; the DB row lock
+    // acquired in createEvent() is what makes the guarantee hold across multiple instances.
+    private final Object chainWriteLock = new Object();
     
-    public AuditEventService(AuditEventRepository eventRepository, HashUtil hashUtil) {
+    public AuditEventService(AuditEventRepository eventRepository, ChainLockRepository chainLockRepository,
+                              HashUtil hashUtil) {
         this.eventRepository = eventRepository;
+        this.chainLockRepository = chainLockRepository;
         this.hashUtil = hashUtil;
     }
-    
+
+    /**
+     * Returns true if an event was already recorded for the given Idempotency-Key.
+     */
+    @Transactional(readOnly = true)
+    public boolean isDuplicateIdempotencyKey(String idempotencyKey) {
+        return idempotencyKey != null && !idempotencyKey.isBlank()
+            && eventRepository.findByIdempotencyKey(idempotencyKey).isPresent();
+    }
+
     /**
      * Create and store a new audit event with hash chain
      */
     @Transactional
     public AuditEventResponse createEvent(CreateEventRequest request) {
+        return createEvent(request, null);
+    }
+
+    /**
+     * Create and store a new audit event with hash chain.
+     * If idempotencyKey matches an existing event, the original event is returned instead of
+     * creating a duplicate (replay protection for retried/duplicate client submissions).
+     */
+    @Transactional
+    public AuditEventResponse createEvent(CreateEventRequest request, String idempotencyKey) {
         log.debug("Creating event: {} for actor: {}", request.getEventType(), request.getActorId());
-        
-        // Use server-assigned timestamp if not provided
-        LocalDateTime timestamp = request.getTimestamp() != null ? 
-            request.getTimestamp() : LocalDateTime.now();
-        timestamp = timestamp.truncatedTo(ChronoUnit.MICROS);
-        
-        // Get next sequence number
-        Long sequenceNumber = eventRepository.getNextSequenceNumber();
-        
-        // Compute content hash
-        String contentHash = hashUtil.computeContentHash(
-            request.getEventType(),
-            request.getActorId(),
-            request.getResourceType(),
-            request.getResourceId(),
-            request.getPayload(),
-            timestamp.toString()
-        );
-        
-        // Get previous chain hash or use genesis hash
-        String previousChainHash;
-        Optional<AuditEvent> lastEvent = eventRepository.findLastRecord();
-        if (lastEvent.isPresent()) {
-            previousChainHash = lastEvent.get().getChainHash();
-        } else {
-            previousChainHash = hashUtil.getGenesisHash();
+
+        if (idempotencyKey != null && !idempotencyKey.isBlank()) {
+            Optional<AuditEvent> existing = eventRepository.findByIdempotencyKey(idempotencyKey);
+            if (existing.isPresent()) {
+                log.info("Idempotent replay detected for key: {}", idempotencyKey);
+                return mapToResponse(existing.get());
+            }
         }
-        
-        // Compute chain hash
-        String chainHash = hashUtil.computeChainHash(previousChainHash, contentHash);
-        
-        // Create and save the event
-        AuditEvent event = AuditEvent.builder()
-            .eventType(request.getEventType())
-            .actorId(request.getActorId())
-            .resourceType(request.getResourceType())
-            .resourceId(request.getResourceId())
-            .payload(request.getPayload())
-            .timestamp(timestamp)
-            .contentHash(contentHash)
-            .chainHash(chainHash)
-            .sequenceNumber(sequenceNumber)
-            .isArchived(false)
-            .build();
-        
-        AuditEvent savedEvent = eventRepository.save(event);
-        log.info("Event created with ID: {} and sequence: {}", savedEvent.getId(), sequenceNumber);
-        
-        return mapToResponse(savedEvent);
+
+        // Serialize sequence-number/chain-hash generation so concurrent writers cannot race on the chain tail
+        synchronized (chainWriteLock) {
+            // Database-level lock: blocks until any other transaction (this instance or another
+            // app instance sharing the DB) holding it commits/rolls back, so the chain tail is
+            // read-then-written atomically cluster-wide, not just within this JVM.
+            chainLockRepository.lockChainTailForUpdate();
+
+            // Use server-assigned timestamp if not provided
+            LocalDateTime timestamp = request.getTimestamp() != null ? 
+                request.getTimestamp() : LocalDateTime.now();
+            timestamp = timestamp.truncatedTo(ChronoUnit.MICROS);
+            
+            // Get next sequence number
+            Long sequenceNumber = eventRepository.getNextSequenceNumber();
+            
+            // Compute content hash
+            String contentHash = hashUtil.computeContentHash(
+                request.getEventType(),
+                request.getActorId(),
+                request.getResourceType(),
+                request.getResourceId(),
+                request.getPayload(),
+                timestamp.toString()
+            );
+            
+            // Get previous chain hash or use genesis hash
+            String previousChainHash;
+            Optional<AuditEvent> lastEvent = eventRepository.findLastRecord();
+            if (lastEvent.isPresent()) {
+                previousChainHash = lastEvent.get().getChainHash();
+            } else {
+                previousChainHash = hashUtil.getGenesisHash();
+            }
+            
+            // Compute chain hash
+            String chainHash = hashUtil.computeChainHash(previousChainHash, contentHash);
+            
+            // Create and save the event
+            AuditEvent event = AuditEvent.builder()
+                .eventType(request.getEventType())
+                .actorId(request.getActorId())
+                .resourceType(request.getResourceType())
+                .resourceId(request.getResourceId())
+                .payload(request.getPayload())
+                .timestamp(timestamp)
+                .contentHash(contentHash)
+                .chainHash(chainHash)
+                .sequenceNumber(sequenceNumber)
+                .idempotencyKey(idempotencyKey != null && !idempotencyKey.isBlank() ? idempotencyKey : null)
+                .isArchived(false)
+                .build();
+
+            AuditEvent savedEvent;
+            try {
+                savedEvent = eventRepository.save(event);
+                eventRepository.flush();
+            } catch (DataIntegrityViolationException e) {
+                // Duplicate key or sequence collision raced past the earlier check; surface the existing record
+                if (idempotencyKey != null && !idempotencyKey.isBlank()) {
+                    Optional<AuditEvent> existing = eventRepository.findByIdempotencyKey(idempotencyKey);
+                    if (existing.isPresent()) {
+                        log.info("Idempotent replay resolved after write race for key: {}", idempotencyKey);
+                        return mapToResponse(existing.get());
+                    }
+                }
+                throw e;
+            }
+            log.info("Event created with ID: {} and sequence: {}", savedEvent.getId(), sequenceNumber);
+            
+            return mapToResponse(savedEvent);
+        }
     }
     
     /**
