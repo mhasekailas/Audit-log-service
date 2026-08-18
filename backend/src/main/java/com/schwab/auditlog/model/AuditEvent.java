@@ -64,6 +64,10 @@ public class AuditEvent {
     
     @Column(name = "sequence_number", nullable = false, unique = true)
     private Long sequenceNumber;
+
+    // Client-supplied Idempotency-Key header value; enforces replay/duplicate-submit protection
+    @Column(name = "idempotency_key", unique = true, length = 255)
+    private String idempotencyKey;
     
     @Column(name = "is_archived", nullable = false)
     private Boolean isArchived = false;
