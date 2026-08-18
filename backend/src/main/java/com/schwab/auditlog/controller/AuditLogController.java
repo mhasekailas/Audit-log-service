@@ -67,24 +67,30 @@ public class AuditLogController {
         @ApiResponse(responseCode = "500", description = "Server error")
     })
     public ResponseEntity<Map<String, Object>> createEvent(
-        @Valid @RequestBody CreateEventRequest request
+        @Valid @RequestBody CreateEventRequest request,
+        @Parameter(description = "Optional client-supplied key to detect duplicate/replayed submissions")
+        @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey
     ) {
         log.info("POST /audit/events - Creating event: {}", request.getEventType());
         
         try {
-            AuditEventResponse response = eventService.createEvent(request);
+            boolean replay = eventService.isDuplicateIdempotencyKey(idempotencyKey);
+            AuditEventResponse response = eventService.createEvent(request, idempotencyKey);
             
             Map<String, Object> body = new HashMap<>();
             body.put("success", true);
             body.put("data", response);
-            body.put("message", "Event created successfully");
+            body.put("replay", replay);
+            body.put("message", replay
+                ? "Duplicate submission detected - returning original event (Idempotency-Key replay)"
+                : "Event created successfully");
             
-            return ResponseEntity.status(HttpStatus.CREATED).body(body);
+            return ResponseEntity.status(replay ? HttpStatus.OK : HttpStatus.CREATED).body(body);
         } catch (Exception e) {
             log.error("Error creating event", e);
             Map<String, Object> errorBody = new HashMap<>();
             errorBody.put("success", false);
-            errorBody.put("error", e.getMessage());
+            errorBody.put("error", "A server error occurred. Please try again later.");
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorBody);
         }
     }
@@ -159,7 +165,7 @@ public class AuditLogController {
             log.error("Error querying events", e);
             Map<String, Object> errorBody = new HashMap<>();
             errorBody.put("success", false);
-            errorBody.put("error", e.getMessage());
+            errorBody.put("error", "A server error occurred. Please try again later.");
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorBody);
         }
     }
@@ -196,7 +202,7 @@ public class AuditLogController {
             log.error("Error verifying chain", e);
             Map<String, Object> errorBody = new HashMap<>();
             errorBody.put("success", false);
-            errorBody.put("error", e.getMessage());
+            errorBody.put("error", "A server error occurred. Please try again later.");
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorBody);
         }
     }
