@@ -6,19 +6,32 @@ A tamper-evident audit log service built with Java Spring Boot, React, and Postg
 
 ## Security Configuration
 
-Audit and compliance endpoints require HTTP Basic authentication. Credentials are
-read from environment variables and are never stored in source files:
+Audit and compliance endpoints require HTTP Basic authentication with role-based
+access control. Credentials are read from environment variables and are never
+stored in source files. Three roles are provisioned, each additive:
+
+- `AUDIT_READER` - read-only (query, verify, export, stats)
+- `AUDIT_WRITER` - reader + create events, redact, run retention archival
+- `AUDIT_ADMIN` - writer + retention policy configuration and compliance reporting
 
 ```powershell
 $env:AUDIT_DB_USERNAME = "your-db-user"
 $env:AUDIT_DB_PASSWORD = "your-db-password"
-$env:AUDIT_API_USERNAME = "your-api-user"
-$env:AUDIT_API_PASSWORD = "your-api-password"
+$env:AUDIT_READER_USERNAME = "your-reader-user"
+$env:AUDIT_READER_PASSWORD = "your-reader-password"
+$env:AUDIT_API_USERNAME = "your-writer-user"
+$env:AUDIT_API_PASSWORD = "your-writer-password"
+$env:AUDIT_ADMIN_USERNAME = "your-admin-user"
+$env:AUDIT_ADMIN_PASSWORD = "your-admin-password"
 ```
 
 The React UI asks for API credentials at sign-in and keeps them only in the
 browser session. Health and Swagger metadata remain public; audit data endpoints
-require authentication.
+require authentication and the appropriate role. Requests are also rate-limited
+per client (default 60 requests/minute, see `audit.security.rate-limit.*` in
+`application.properties`) and `POST /audit/events` supports an optional
+`Idempotency-Key` header to safely retry/replay a submission without creating a
+duplicate event.
 
 ### Scenario A: Core Audit Log Service
 - **Write API**: Append-only event storage with automatic hash chain generation

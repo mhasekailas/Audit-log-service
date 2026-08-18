@@ -6,11 +6,15 @@
 # 1. Navigate to project
 cd "f:\Kailas SChwab assignment\Audit-log-service"
 
-# 2. Set credentials in the current shell
+# 2. Set credentials in the current shell (reader/writer/admin roles)
 $env:AUDIT_DB_USERNAME = "your-db-user"
 $env:AUDIT_DB_PASSWORD = "your-db-password"
-$env:AUDIT_API_USERNAME = "your-api-user"
-$env:AUDIT_API_PASSWORD = "your-api-password"
+$env:AUDIT_READER_USERNAME = "your-reader-user"
+$env:AUDIT_READER_PASSWORD = "your-reader-password"
+$env:AUDIT_API_USERNAME = "your-writer-user"
+$env:AUDIT_API_PASSWORD = "your-writer-password"
+$env:AUDIT_ADMIN_USERNAME = "your-admin-user"
+$env:AUDIT_ADMIN_PASSWORD = "your-admin-password"
 
 # 3. Start PostgreSQL (Docker)
 docker-compose up -d postgres
