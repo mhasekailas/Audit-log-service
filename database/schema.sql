@@ -13,6 +13,7 @@ CREATE TABLE audit_events (
     content_hash VARCHAR(64) NOT NULL,
     chain_hash VARCHAR(64) NOT NULL,
     sequence_number BIGINT NOT NULL UNIQUE,
+    idempotency_key VARCHAR(255) UNIQUE,
     is_archived BOOLEAN DEFAULT FALSE,
     archived_at TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
@@ -77,6 +78,13 @@ CREATE TABLE compliance_audit_access (
 
 CREATE INDEX idx_compliance_event ON compliance_audit_access(audit_event_id);
 CREATE INDEX idx_compliance_access_type ON compliance_audit_access(access_type);
+
+-- Singleton row locked (SELECT ... FOR UPDATE) by every writer to serialize chain-tail
+-- sequence/hash generation at the database level, even across multiple app instances.
+CREATE TABLE chain_lock (
+    id BIGINT PRIMARY KEY
+);
+INSERT INTO chain_lock (id) VALUES (1) ON CONFLICT DO NOTHING;
 
 -- Create a view for chain verification
 CREATE OR REPLACE VIEW chain_verification_view AS
