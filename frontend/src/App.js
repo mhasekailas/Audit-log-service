@@ -3,8 +3,8 @@ import './App.css';
 import EventForm from './components/EventForm';
 import EventList from './components/EventList';
 import ChainVerification from './components/ChainVerification';
-import ScenarioB from './components/ScenarioB';
-import ScenarioC from './components/ScenarioC';
+import DataRetention from './components/DataRetention';
+import ComplianceReporting from './components/ComplianceReporting';
 import { authorizedFetch, clearCredentials, getCredentials, setCredentials } from './api';
 
 function App() {
@@ -112,8 +112,8 @@ function App() {
             setActiveTab('events');
           }} />
         )}
-        {activeTab === 'scenario-b' && <ScenarioB />}
-        {activeTab === 'scenario-c' && <ScenarioC />}
+        {activeTab === 'scenario-b' && <DataRetention />}
+        {activeTab === 'scenario-c' && <ComplianceReporting />}
       </main>
     </div>
   );
