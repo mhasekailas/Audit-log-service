@@ -62,6 +62,11 @@ public interface AuditEventRepository extends JpaRepository<AuditEvent, Long> {
      */
     @Query("SELECT e FROM AuditEvent e WHERE e.isArchived = false ORDER BY e.sequenceNumber DESC LIMIT 1")
     Optional<AuditEvent> findLastRecord();
+
+    /**
+     * Find an existing event by its idempotency key (replay/duplicate-submit detection)
+     */
+    Optional<AuditEvent> findByIdempotencyKey(String idempotencyKey);
     
     /**
      * Find events with multiple filter criteria
