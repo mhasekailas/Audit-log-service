@@ -5,6 +5,7 @@ import com.schwab.auditlog.dto.ChainVerificationResponse;
 import com.schwab.auditlog.dto.CreateEventRequest;
 import com.schwab.auditlog.model.AuditEvent;
 import com.schwab.auditlog.repository.AuditEventRepository;
+import com.schwab.auditlog.repository.ChainLockRepository;
 import com.schwab.auditlog.util.HashUtil;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -25,6 +26,7 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 class AuditEventServiceTest {
     @Mock AuditEventRepository eventRepository;
+    @Mock ChainLockRepository chainLockRepository;
 
     private AuditEventService service;
     private HashUtil hashUtil;
@@ -34,7 +36,7 @@ class AuditEventServiceTest {
     void setUp() {
         objectMapper = new ObjectMapper();
         hashUtil = new HashUtil(objectMapper);
-        service = new AuditEventService(eventRepository, hashUtil);
+        service = new AuditEventService(eventRepository, chainLockRepository, hashUtil);
     }
 
     @Test
@@ -57,6 +59,31 @@ class AuditEventServiceTest {
     }
 
     @Test
+    void createEventWithDuplicateIdempotencyKeyReturnsOriginalEventWithoutInsertingAgain() throws Exception {
+        CreateEventRequest request = request("LOGIN", "actor-1", "ACCOUNT", "acct-1", "{\"ok\":true}");
+        AuditEvent existing = event(1L, 1L, "actor-1", "acct-1", "{\"ok\":true}");
+        hashChain(existing, hashUtil.getGenesisHash());
+        when(eventRepository.findByIdempotencyKey("dup-key")).thenReturn(Optional.of(existing));
+
+        var response = service.createEvent(request, "dup-key");
+
+        assertEquals(existing.getId(), response.getId());
+        verify(eventRepository, never()).save(any(AuditEvent.class));
+        verify(eventRepository, never()).getNextSequenceNumber();
+    }
+
+    @Test
+    void isDuplicateIdempotencyKeyReflectsRepositoryState() {
+        when(eventRepository.findByIdempotencyKey("known-key")).thenReturn(Optional.of(event(1L, 1L, "a", "r", "{}")));
+        when(eventRepository.findByIdempotencyKey("unknown-key")).thenReturn(Optional.empty());
+
+        assertTrue(service.isDuplicateIdempotencyKey("known-key"));
+        assertFalse(service.isDuplicateIdempotencyKey("unknown-key"));
+        assertFalse(service.isDuplicateIdempotencyKey(null));
+        assertFalse(service.isDuplicateIdempotencyKey(""));
+    }
+
+    @Test
     void verifyChainAcceptsCleanChainAndEmptyChain() {
         when(eventRepository.findAllByOrderBySequenceNumberAsc()).thenReturn(List.of());
         ChainVerificationResponse empty = service.verifyChain();
@@ -72,6 +99,29 @@ class AuditEventServiceTest {
         ChainVerificationResponse valid = service.verifyChain();
         assertTrue(valid.getIsValid());
         assertEquals(2, valid.getTotalRecords());
+    }
+
+    @Test
+    void verifyChainDetectsDeletedMiddleRecord() {
+        // Simulate a hard-deleted middle record: record 2 is physically removed (not just
+        // archived), so the chain query returns records 1 and 3 back-to-back. Record 3's stored
+        // chainHash was computed against record 2's chainHash, so re-linking against record 1
+        // must surface a break rather than silently "verifying" a shortened chain.
+        AuditEvent first = event(1L, 1L, "actor-1", "acct-1", "{}");
+        AuditEvent second = event(2L, 2L, "actor-1", "acct-2", "{}");
+        AuditEvent third = event(3L, 3L, "actor-1", "acct-3", "{}");
+        hashChain(first, hashUtil.getGenesisHash());
+        hashChain(second, first.getChainHash());
+        hashChain(third, second.getChainHash());
+
+        // record 2 omitted entirely, as if deleted from storage
+        when(eventRepository.findAllByOrderBySequenceNumberAsc()).thenReturn(List.of(first, third));
+
+        ChainVerificationResponse result = service.verifyChain();
+
+        assertFalse(result.getIsValid());
+        assertEquals(3L, result.getFirstBreach().getRecordId());
+        assertEquals("CHAIN_HASH_MISMATCH", result.getFirstBreach().getViolationType());
     }
 
     @Test
