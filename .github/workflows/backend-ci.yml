@@ -1,0 +1,61 @@
+name: Backend CI
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+    branches:
+      - main
+      - master
+
+jobs:
+  backend-tests:
+    name: Backend tests and coverage
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+
+      - name: Run Maven test suite
+        env:
+          AUDIT_DB_USERNAME: test-db-user
+          AUDIT_DB_PASSWORD: test-db-password
+          AUDIT_READER_USERNAME: test-reader
+          AUDIT_READER_PASSWORD: reader-pass-123
+          AUDIT_API_USERNAME: test-writer
+          AUDIT_API_PASSWORD: writer-pass-123
+          AUDIT_ADMIN_USERNAME: test-admin
+          AUDIT_ADMIN_PASSWORD: admin-pass-123
+          AUDIT_REQUIRE_HTTPS: 'false'
+        run: mvn --batch-mode test
+
+      - name: Upload Surefire reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-surefire-reports
+          path: backend/target/surefire-reports/
+          if-no-files-found: error
+
+      - name: Upload JaCoCo report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-jacoco-report
+          path: |
+            backend/target/site/jacoco/
+            backend/target/jacoco.exec
+          if-no-files-found: error
