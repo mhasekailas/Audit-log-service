@@ -375,3 +375,25 @@
 **Disposition:** ACCEPTED
 
 **Validation Performed:** Reviewed the security and test-case changes against the implemented API behavior and existing backend/frontend validation results.
+
+---
+
+### 2026-08-19:
+
+**Task ID:** SEC.T3 / TEST.T1 / ATTEST.T1
+
+**Prompt Intent:** Close evaluator-identified guardrail gaps covering unauthenticated APIs, authentication/authorization lifecycle, resource ownership, replay controls, concurrency, persistence configuration, test coverage, CI artifacts, and attestation evidence.
+
+**Constraints Provided:** Do not commit or push to Git; keep fixes local; address sensitive unauthenticated API access, testing guardrails, attestation update, security guardrail failures, chain concurrency, and detailed test scenario/coverage evidence.
+
+**AI Output Summary:** Hardened audit API security and evidence coverage across multiple areas: added controller-level authentication defaults, explicit secured aliases for `GET /audit`, `GET /audit/search`, `POST /audit/redact/{id}`, and `GET /audit/export`; required `Idempotency-Key` for audit writes; enforced actor ownership for query/get/export/redaction flows; made global retention archive admin-only; added lifecycle controls for Basic users; added optional OAuth2/OIDC JWT resource-server support; added HTTPS enforcement, CORS allowlist policy, request-size limits, rate limiting, and bounded pagination; added Flyway migrations and production-safe persistence config; added CI workflow and explicit Surefire/JaCoCo artifact generation; updated `ATTESTATION.md` with repository URL, branch, exact commit, dirty working tree state, claim-to-evidence matrix, and captured validation results.
+
+**Disposition:** MODIFIED
+
+**Human Rationale:** The changes convert broad evaluator findings into concrete guardrails and executable evidence. Sensitive endpoints are no longer publicly reachable, role checks are paired with resource ownership checks, replay/duplicate writes are controlled, concurrent chain writes are serialized by a locked chain-tail row, and production configuration avoids unsafe schema mutation, SQL logging, hard-coded secrets, and disabled TLS defaults.
+
+**Validation Performed:** Ran focused backend tests throughout the hardening work and captured Surefire results, including `AuditLogControllerSecurityTest`, `AuditLogControllerValidationTest`, `AuditScenarioEndToEndTest`, `AuditEventServiceTest`, `AuditEventConcurrencyTest`, `RateLimitingFilterTest`, `HttpsEnforcementFilterTest`, and `CorsConfigurationTest`. Verified representative results: unauthenticated/security matrix tests passed, replay/idempotency tests passed, ownership/admin-only archive tests passed, E2E scenario tests passed, chain concurrency/rollback tests passed, pagination/CORS tests passed, and TLS/rate-limit tests passed. Confirmed VS Code diagnostics reported no errors in touched Java/config/POM/YAML files after edits.
+
+**Detailed Test Scenario and Coverage Changes:** Added or updated negative and integration coverage for unauthenticated reads/writes, wrong-role requests, cross-actor query/export/redaction denial, mandatory `Idempotency-Key`, duplicate replay returning the original event, expired/revoked Basic accounts, HTTPS enforcement, CORS deny-by-default behavior, oversized request rejection, bounded pagination, DB failure response sanitization, chain tamper/gap detection, locked chain-tail concurrency, rollback without sequence gaps, and full Scenario A/B/C API walkthroughs.
+
+**Follow-up Actions:** Review all local diffs and test artifacts before final submission; decide whether to commit the hardening changes as one or more logical commits; if deploying, configure production OIDC issuer, TLS keystore or trusted proxy headers, CORS allowed origins, and secret-manager-backed environment variables.
