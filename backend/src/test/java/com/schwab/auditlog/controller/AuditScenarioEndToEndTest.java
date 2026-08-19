@@ -13,6 +13,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.UUID;
 
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.httpBasic;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
@@ -50,11 +51,12 @@ class AuditScenarioEndToEndTest {
     @Test
     @Order(1)
     void scenarioA_createEvent() throws Exception {
-        String body = "{\"eventType\":\"LOGIN\",\"actorId\":\"e2e-actor\",\"resourceType\":\"ACCOUNT\"," +
+        String body = "{\"eventType\":\"LOGIN\",\"actorId\":\"test-writer\",\"resourceType\":\"ACCOUNT\"," +
             "\"resourceId\":\"e2e-acct\",\"payload\":{\"ssn\":\"123-45-6789\",\"note\":\"ok\"}}";
 
         String response = mockMvc.perform(post("/audit/events")
                 .with(httpBasic(WRITER, WRITER_PW))
+            .header("Idempotency-Key", "e2e-create-" + UUID.randomUUID())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(body))
             .andExpect(status().isCreated())
@@ -69,8 +71,8 @@ class AuditScenarioEndToEndTest {
     @Order(2)
     void scenarioA_queryEventsFindsCreatedEvent() throws Exception {
         mockMvc.perform(get("/audit/events")
-                .param("actorId", "e2e-actor")
-                .with(httpBasic(READER, READER_PW)))
+                .param("actorId", "test-writer")
+                .with(httpBasic(WRITER, WRITER_PW)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.success").value(true))
             .andExpect(jsonPath("$.totalCount").value(org.hamcrest.Matchers.greaterThanOrEqualTo(1)));
@@ -80,7 +82,7 @@ class AuditScenarioEndToEndTest {
     @Order(3)
     void scenarioA_getEventById() throws Exception {
         mockMvc.perform(get("/audit/events/" + createdEventId)
-                .with(httpBasic(READER, READER_PW)))
+                .with(httpBasic(WRITER, WRITER_PW)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.id").value(createdEventId));
     }
@@ -114,13 +116,14 @@ class AuditScenarioEndToEndTest {
     void scenarioB_retentionPolicyAndArchival() throws Exception {
         // Seed an old event that should be swept up by a 1-day retention policy.
         LocalDateTime oldTimestamp = LocalDateTime.now().minusDays(400);
-        String oldEventBody = "{\"eventType\":\"LOGIN\",\"actorId\":\"e2e-archive-actor\"," +
+        String oldEventBody = "{\"eventType\":\"LOGIN\",\"actorId\":\"test-writer\"," +
             "\"resourceType\":\"RETENTION_TEST\",\"resourceId\":\"e2e-archive-acct\"," +
             "\"payload\":{\"ok\":true},\"timestamp\":\"" +
             oldTimestamp.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME) + "\"}";
 
         mockMvc.perform(post("/audit/events")
                 .with(httpBasic(WRITER, WRITER_PW))
+                .header("Idempotency-Key", "e2e-retention-" + UUID.randomUUID())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(oldEventBody))
             .andExpect(status().isCreated());
@@ -132,7 +135,7 @@ class AuditScenarioEndToEndTest {
             .andExpect(status().isOk());
 
         mockMvc.perform(post("/audit/retention/archive")
-                .with(httpBasic(WRITER, WRITER_PW)))
+            .with(httpBasic(ADMIN, ADMIN_PW)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.archivedCount").value(org.hamcrest.Matchers.greaterThanOrEqualTo(1)));
     }
@@ -141,8 +144,8 @@ class AuditScenarioEndToEndTest {
     @Order(7)
     void scenarioB_exportProducesVerifiableBundle() throws Exception {
         mockMvc.perform(get("/audit/export")
-                .param("actorId", "e2e-actor")
-                .with(httpBasic(READER, READER_PW)))
+                .param("actorId", "test-writer")
+                .with(httpBasic(WRITER, WRITER_PW)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.exportType").value("ACTOR_ID"))
             .andExpect(jsonPath("$.records[0].chainHash").exists());

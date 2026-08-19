@@ -92,6 +92,22 @@ class AuditLogControllerValidationTest {
     }
 
     @Test
+    void negativePageReturns400() throws Exception {
+        mockMvc.perform(get("/audit/events")
+                .param("page", "-1")
+                .with(httpBasic(WRITER, WRITER_PW)))
+            .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void excessivePageLimitReturns400() throws Exception {
+        mockMvc.perform(get("/audit/events")
+                .param("limit", "201")
+                .with(httpBasic(WRITER, WRITER_PW)))
+            .andExpect(status().isBadRequest());
+    }
+
+    @Test
     void databaseFailureDuringQueryReturnsGenericServerErrorWithoutLeakingDetails() throws Exception {
         when(auditEventRepository.findAllByOrderBySequenceNumberAsc())
             .thenThrow(new DataAccessResourceFailureException("Connection refused: secret-jdbc-url-detail"));

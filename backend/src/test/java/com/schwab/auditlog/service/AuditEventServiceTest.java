@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.schwab.auditlog.dto.ChainVerificationResponse;
 import com.schwab.auditlog.dto.CreateEventRequest;
 import com.schwab.auditlog.model.AuditEvent;
+import com.schwab.auditlog.model.ChainLock;
 import com.schwab.auditlog.repository.AuditEventRepository;
 import com.schwab.auditlog.repository.ChainLockRepository;
 import com.schwab.auditlog.util.HashUtil;
@@ -42,6 +43,7 @@ class AuditEventServiceTest {
     @Test
     void createEventUsesGenesisForFirstRecordAndServerTimestamp() throws Exception {
         CreateEventRequest request = request("LOGIN", "actor-1", "ACCOUNT", "acct-1", "{\"ok\":true}");
+        when(chainLockRepository.lockChainTailForUpdate()).thenReturn(Optional.of(new ChainLock(1L)));
         when(eventRepository.getNextSequenceNumber()).thenReturn(1L);
         when(eventRepository.findLastRecord()).thenReturn(Optional.empty());
         when(eventRepository.save(any(AuditEvent.class))).thenAnswer(invocation -> {
@@ -56,6 +58,18 @@ class AuditEventServiceTest {
         assertEquals(1L, response.getSequenceNumber());
         assertNotNull(response.getTimestamp());
         assertEquals(hashUtil.computeChainHash(hashUtil.getGenesisHash(), response.getContentHash()), response.getChainHash());
+    }
+
+    @Test
+    void createEventFailsClosedIfChainLockRowIsMissing() throws Exception {
+        CreateEventRequest request = request("LOGIN", "actor-1", "ACCOUNT", "acct-1", "{\"ok\":true}");
+        when(chainLockRepository.lockChainTailForUpdate()).thenReturn(Optional.empty());
+
+        IllegalStateException exception = assertThrows(IllegalStateException.class, () -> service.createEvent(request));
+
+        assertEquals("Chain lock row is missing; refusing unlocked audit write", exception.getMessage());
+        verify(eventRepository, never()).getNextSequenceNumber();
+        verify(eventRepository, never()).save(any(AuditEvent.class));
     }
 
     @Test
