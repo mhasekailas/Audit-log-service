@@ -25,6 +25,9 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
@@ -39,10 +42,12 @@ import java.util.Map;
  */
 @RestController
 @RequestMapping("/audit")
+@PreAuthorize("isAuthenticated()")
 @Validated
 @Slf4j
 @Tag(name = "Audit Log API", description = "Tamper-evident audit log service API")
 public class AuditLogController {
+    private static final int MAX_PAGE_SIZE = 200;
     
     private final AuditEventService eventService;
     private final RetentionRedactionService retentionRedactionService;
@@ -58,6 +63,7 @@ public class AuditLogController {
     /**
      * Create a new audit event (Write API)
      */
+    @PreAuthorize("hasAnyRole('AUDIT_WRITER', 'AUDIT_ADMIN')")
     @PostMapping("/events")
     @Operation(summary = "Create a new audit event",
                description = "Append a new event to the audit log. Hash chain is computed automatically.")
@@ -68,12 +74,20 @@ public class AuditLogController {
     })
     public ResponseEntity<Map<String, Object>> createEvent(
         @Valid @RequestBody CreateEventRequest request,
-        @Parameter(description = "Optional client-supplied key to detect duplicate/replayed submissions")
-        @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey
+        @Parameter(description = "Required client-supplied key to detect duplicate/replayed submissions")
+        @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
+        Authentication authentication
     ) {
         log.info("POST /audit/events - Creating event: {}", request.getEventType());
         
         try {
+            eventService.assertActorIdentityMatchesPrincipal(authentication, request.getActorId());
+            if (idempotencyKey == null || idempotencyKey.isBlank()) {
+                Map<String, Object> errorBody = new HashMap<>();
+                errorBody.put("success", false);
+                errorBody.put("error", "Idempotency-Key header is required for audit writes");
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorBody);
+            }
             boolean replay = eventService.isDuplicateIdempotencyKey(idempotencyKey);
             AuditEventResponse response = eventService.createEvent(request, idempotencyKey);
             
@@ -86,6 +100,8 @@ public class AuditLogController {
                 : "Event created successfully");
             
             return ResponseEntity.status(replay ? HttpStatus.OK : HttpStatus.CREATED).body(body);
+        } catch (AccessDeniedException e) {
+            throw e;
         } catch (Exception e) {
             log.error("Error creating event", e);
             Map<String, Object> errorBody = new HashMap<>();
@@ -98,11 +114,13 @@ public class AuditLogController {
     /**
      * Query audit events with filtering and pagination (Query API)
      */
-    @GetMapping("/events")
+    @PreAuthorize("hasAnyRole('AUDIT_READER', 'AUDIT_WRITER', 'AUDIT_ADMIN')")
+    @GetMapping({"", "/search", "/events"})
     @Operation(summary = "Query audit events",
                description = "Retrieve events with optional filtering by actor, event type, resource, and time range. Supports pagination.")
     @ApiResponse(responseCode = "200", description = "Events retrieved successfully")
     public ResponseEntity<Map<String, Object>> queryEvents(
+        Authentication authentication,
         @Parameter(description = "Filter by actor ID")
         @RequestParam(required = false) String actorId,
         
@@ -141,9 +159,21 @@ public class AuditLogController {
         @Parameter(description = "Page size (default: 50)")
         @RequestParam(defaultValue = "50") int limit
     ) {
-        log.info("GET /audit/events - Query with filters: actorId={}, eventType={}", actorId, eventType);
+        log.info("GET /audit query - Query with filters: actorId={}, eventType={}", actorId, eventType);
         
         try {
+            if (!eventService.isAdmin(authentication)) {
+                actorId = actorId == null ? authentication.getName() : actorId;
+                if (!authentication.getName().equals(actorId)) {
+                    throw new AccessDeniedException("Access denied for the requested actor identity");
+                }
+            }
+            if (page < 0) {
+                return badRequest("page must be greater than or equal to 0");
+            }
+            if (limit < 1 || limit > MAX_PAGE_SIZE) {
+                return badRequest("limit must be between 1 and " + MAX_PAGE_SIZE);
+            }
             Pageable pageable = PageRequest.of(page, limit);
             Page<AuditEventResponse> events = eventService.queryEvents(
                 actorId, eventType, resourceType, resourceId,
@@ -161,6 +191,8 @@ public class AuditLogController {
             body.put("hasMore", events.hasNext());
             
             return ResponseEntity.ok(body);
+        } catch (AccessDeniedException e) {
+            throw e;
         } catch (Exception e) {
             log.error("Error querying events", e);
             Map<String, Object> errorBody = new HashMap<>();
@@ -173,6 +205,7 @@ public class AuditLogController {
     /**
      * Verify chain integrity (Scenario A - core feature)
      */
+    @PreAuthorize("hasAnyRole('AUDIT_READER', 'AUDIT_WRITER', 'AUDIT_ADMIN')")
     @GetMapping("/verify")
     @Operation(summary = "Verify audit log chain integrity",
                description = "Walk the entire hash chain and verify that no records have been tampered with. " +
@@ -206,28 +239,40 @@ public class AuditLogController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorBody);
         }
     }
+
+    private ResponseEntity<Map<String, Object>> badRequest(String error) {
+        Map<String, Object> errorBody = new HashMap<>();
+        errorBody.put("success", false);
+        errorBody.put("error", error);
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorBody);
+    }
     
     /**
      * Get a specific event by ID
      */
+    @PreAuthorize("hasAnyRole('AUDIT_READER', 'AUDIT_WRITER', 'AUDIT_ADMIN')")
     @GetMapping("/events/{id}")
     @Operation(summary = "Get event by ID",
                description = "Retrieve a specific audit event by its ID")
     @ApiResponse(responseCode = "200", description = "Event retrieved successfully")
     public ResponseEntity<Map<String, Object>> getEventById(
         @Parameter(description = "Event ID")
-        @PathVariable Long id
+        @PathVariable Long id,
+        Authentication authentication
     ) {
         log.info("GET /audit/events/{} - Fetching event", id);
         
         try {
             AuditEventResponse event = eventService.getEventById(id);
+            eventService.assertEventVisibleToPrincipal(authentication, event);
             
             Map<String, Object> body = new HashMap<>();
             body.put("success", true);
             body.put("data", event);
             
             return ResponseEntity.ok(body);
+        } catch (AccessDeniedException e) {
+            throw e;
         } catch (Exception e) {
             log.error("Error fetching event", e);
             Map<String, Object> errorBody = new HashMap<>();
@@ -240,6 +285,7 @@ public class AuditLogController {
     /**
      * Health check endpoint
      */
+    @PreAuthorize("permitAll()")
     @GetMapping("/health")
     @Operation(summary = "Health check", description = "Verify the service is running")
     public ResponseEntity<Map<String, String>> health() {
@@ -249,6 +295,7 @@ public class AuditLogController {
         return ResponseEntity.ok(response);
     }
 
+    @PreAuthorize("hasRole('AUDIT_ADMIN')")
     @PostMapping("/retention-policies")
     @Operation(summary = "Create or update a retention policy")
     public ResponseEntity<Map<String, Object>> upsertRetentionPolicy(
@@ -259,6 +306,7 @@ public class AuditLogController {
         return ResponseEntity.ok(body);
     }
 
+    @PreAuthorize("hasRole('AUDIT_ADMIN')")
     @PostMapping("/retention/archive")
     @Operation(summary = "Archive events expired under retention policies")
     public ResponseEntity<Map<String, Object>> archiveExpired(
@@ -270,24 +318,41 @@ public class AuditLogController {
         return ResponseEntity.ok(body);
     }
 
-    @PostMapping("/events/{id}/redact")
+    @PreAuthorize("hasAnyRole('AUDIT_WRITER', 'AUDIT_ADMIN')")
+    @PostMapping({"/events/{id}/redact", "/redact/{id}"})
     @Operation(summary = "Redact selected payload fields and preserve chain integrity")
     public ResponseEntity<Map<String, Object>> redactEvent(
-        @PathVariable Long id, @Valid @RequestBody RedactionRequest request) {
+        @PathVariable Long id, @Valid @RequestBody RedactionRequest request, Authentication authentication) {
+        eventService.assertEventVisibleToPrincipal(authentication, eventService.getEventById(id));
         Map<String, Object> body = new HashMap<>();
         body.put("success", true);
         body.put("data", retentionRedactionService.redact(id, request));
         return ResponseEntity.ok(body);
     }
 
+    @PreAuthorize("isAuthenticated() and hasAnyRole('AUDIT_READER', 'AUDIT_WRITER', 'AUDIT_ADMIN')")
     @GetMapping("/export")
     @Operation(summary = "Export a self-contained verifiable actor or resource bundle")
     public ResponseEntity<BulkExportResponse> export(
+        Authentication authentication,
         @RequestParam(required = false) String actorId,
         @RequestParam(required = false) String resourceId) {
+        if (!eventService.isAdmin(authentication)) {
+            String principal = authentication.getName();
+            if (actorId != null && !principal.equals(actorId)) {
+                throw new AccessDeniedException("Access denied for the requested actor identity");
+            }
+            if (resourceId != null && !principal.equals(resourceId)) {
+                throw new AccessDeniedException("Access denied for the requested actor identity");
+            }
+            if (actorId == null && resourceId == null) {
+                actorId = principal;
+            }
+        }
         return ResponseEntity.ok(retentionRedactionService.export(actorId, resourceId));
     }
 
+    @PreAuthorize("hasRole('AUDIT_ADMIN')")
     @PostMapping("/compliance/access")
     @Operation(summary = "Record an account-data access decision")
     public ResponseEntity<Map<String, Object>> recordComplianceAccess(
@@ -298,9 +363,11 @@ public class AuditLogController {
         return ResponseEntity.status(HttpStatus.CREATED).body(body);
     }
 
+    @PreAuthorize("hasRole('AUDIT_ADMIN')")
     @GetMapping("/compliance-report")
     @Operation(summary = "Generate a regulator-ready account access report")
     public ResponseEntity<ComplianceReportResponse> complianceReport(
+        Authentication authentication,
         @RequestParam(name = "from", required = false)
         @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime from,
         @RequestParam(name = "to", required = false)
@@ -308,6 +375,12 @@ public class AuditLogController {
         @RequestParam(required = false) String actorId,
         @RequestParam(required = false) String resourceId,
         @RequestParam(required = false) String accessType) {
+        if (!eventService.isAdmin(authentication)) {
+            actorId = actorId == null ? authentication.getName() : actorId;
+            if (!authentication.getName().equals(actorId)) {
+                throw new AccessDeniedException("Access denied for the requested actor identity");
+            }
+        }
         return ResponseEntity.ok(complianceReportService.report(from, to, actorId, resourceId, accessType));
     }
 }

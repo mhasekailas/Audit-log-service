@@ -12,6 +12,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -53,6 +55,65 @@ public class AuditEventService {
     }
 
     /**
+     * Returns true when the authenticated principal has admin authority for audit management.
+     */
+    public boolean isAdmin(Authentication authentication) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return false;
+        }
+        return authentication.getAuthorities().stream()
+            .anyMatch(grantedAuthority -> grantedAuthority.getAuthority().equals("ROLE_AUDIT_ADMIN"));
+    }
+
+    /**
+     * Enforce that a writer can only create events for their own actor identity unless they are admin.
+     */
+    public void assertActorIdentityMatchesPrincipal(Authentication authentication, String actorId) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            throw new AccessDeniedException("Authentication required");
+        }
+        if (isAdmin(authentication)) {
+            return;
+        }
+        String principalName = authentication.getName();
+        if (actorId == null || !principalName.equals(actorId)) {
+            throw new AccessDeniedException("Access denied for the requested actor identity");
+        }
+    }
+
+    /**
+     * Enforce that a user can only view records belonging to their own actor identity unless they are admin.
+     */
+    public void assertEventVisibleToPrincipal(Authentication authentication, AuditEventResponse event) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            throw new AccessDeniedException("Authentication required");
+        }
+        if (isAdmin(authentication)) {
+            return;
+        }
+        String principalName = authentication.getName();
+        if (event == null || event.getActorId() == null || !principalName.equals(event.getActorId())) {
+            throw new AccessDeniedException("Access denied for the requested actor identity");
+        }
+    }
+
+    /**
+     * Enforce that a user can only view records belonging to their own actor identity unless they are admin.
+     */
+    public void assertEventVisibleToPrincipal(Authentication authentication, AuditEvent event) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            throw new AccessDeniedException("Authentication required");
+        }
+        if (isAdmin(authentication)) {
+            return;
+        }
+        String principalName = authentication.getName();
+        if (event == null || event.getActorId() == null || !principalName.equals(event.getActorId())) {
+            throw new AccessDeniedException("Access denied for the requested actor identity");
+        }
+    }
+
+    /**
      * Create and store a new audit event with hash chain
      */
     @Transactional
@@ -82,7 +143,8 @@ public class AuditEventService {
             // Database-level lock: blocks until any other transaction (this instance or another
             // app instance sharing the DB) holding it commits/rolls back, so the chain tail is
             // read-then-written atomically cluster-wide, not just within this JVM.
-            chainLockRepository.lockChainTailForUpdate();
+            chainLockRepository.lockChainTailForUpdate()
+                .orElseThrow(() -> new IllegalStateException("Chain lock row is missing; refusing unlocked audit write"));
 
             // Use server-assigned timestamp if not provided
             LocalDateTime timestamp = request.getTimestamp() != null ? 
